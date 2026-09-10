@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -57,9 +58,11 @@ var (
 	configPath         string
 	sinx               []string
 	healthz            string
+	healthzAddr        string
 
 	metricsinks []sinks.MetricSink
 	embeddedFS  fs.FS
+	promSink    *prometheus.PromScoped // set by createMetricSinks when the prometheus sink is enabled
 )
 
 // SetConfigsFS sets the embedded configs filesystem, called from main before Execute.
@@ -98,6 +101,7 @@ func init() {
 
 	// add a healthcheck persisntent flag
 	rootCmd.PersistentFlags().StringVarP(&healthz, "healthz", "", "/healthz", "healthcheck endpoint path")
+	rootCmd.PersistentFlags().StringVarP(&healthzAddr, "healthz-addr", "", ":2112", "address for the healthcheck listener; ignored when the prometheus sink is enabled, which serves healthz on its own port")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		slog.SetDefault(logger.New(verbose))
@@ -147,6 +151,7 @@ func createMetricSinks() {
 		})
 		selfSink = ps
 		metricsinks = append(metricsinks, ps)
+		promSink = ps
 		slog.Info("configured prometheus sink", "addr", promPort, "path", promPath)
 	}
 
@@ -229,6 +234,23 @@ func RunHydrolixCollector() {
 		return
 	}
 
+	// Reuse the prometheus sink's HTTP server when it's enabled, otherwise
+	// serve the health endpoint on its own listener.
+	var healthSrv *http.Server
+	if promSink != nil {
+		promSink.SetHealthCheck(healthz, healthHandler(c.Healthy))
+	} else {
+		mux := http.NewServeMux()
+		mux.Handle(healthz, healthHandler(c.Healthy))
+		healthSrv = &http.Server{Addr: healthzAddr, Handler: mux}
+		go func() {
+			if err := healthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				slog.Error("health endpoint failed", "addr", healthzAddr, "error", err)
+			}
+		}()
+		slog.Info("configured health endpoint", "addr", healthzAddr, "path", healthz)
+	}
+
 	// Start polling in background
 	go c.Start()
 
@@ -240,5 +262,21 @@ func RunHydrolixCollector() {
 	// Cleanup with timeout
 	slog.Info("Shutting down Hydrolix Poller...")
 	c.Stop()
+	if healthSrv != nil {
+		_ = healthSrv.Shutdown(context.Background())
+	}
 	slog.Info("Hydrolix Poller stopped")
+}
+
+// healthHandler reports 200 when healthy and 503 otherwise.
+func healthHandler(healthy func() bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if healthy() {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("unhealthy"))
+	}
 }
