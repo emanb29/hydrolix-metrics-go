@@ -13,14 +13,17 @@ const customQueryName = "custom"
 
 // newAdminCommentBase builds the part of the comment that is fixed for the life
 // of the process.
-func newAdminCommentBase(interval time.Duration) string {
+func newAdminCommentBase(interval time.Duration, sinkNames string) string {
 	// Tokens are space-separated, so whitespace stamped into the version would
 	// read as a token boundary. A build with no version stamped in reports "dev".
 	version := strings.Join(strings.Fields(build.Version), "_")
 	if version == "" {
 		version = "dev"
 	}
-	return fmt.Sprintf("User: %s version: %s interval: %s", productName, version, interval)
+	if sinkNames == "" {
+		sinkNames = "none"
+	}
+	return fmt.Sprintf("User: %s version: %s interval: %s sinks: %s", productName, version, interval, sinkNames)
 }
 
 // userAgentAdminComment returns the admin comment for a single poll. Each tick

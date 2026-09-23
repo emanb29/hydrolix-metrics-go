@@ -92,7 +92,7 @@ func New(name string, o HydrolixOpts, ms ...sinks.MetricSink) *Client {
 		closeCh:            make(chan struct{}),
 		sinks:              ms,
 		httpClient:         &http.Client{Timeout: 30 * time.Second},
-		userAgentBase:      newAdminCommentBase(o.IntervalSeconds),
+		userAgentBase:      newAdminCommentBase(o.IntervalSeconds, sinks.MetricSinks(ms).Name()),
 		queriesAreEmbedded: o.ConfigPath == "",
 		ctx:                ctx,
 		cancel:             cancel,

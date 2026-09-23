@@ -300,8 +300,9 @@ func newCaptureSink() *captureSink {
 	return &captureSink{store: &captureStore{}}
 }
 
-func (s *captureSink) Start() {}
-func (s *captureSink) Stop()  {}
+func (s *captureSink) Name() string { return "capture" }
+func (s *captureSink) Start()       {}
+func (s *captureSink) Stop()        {}
 
 func (s *captureSink) Gauge(name, unit string, value float64, tags sinks.Tags) {
 	s.store.gauges = append(s.store.gauges, metricCapture{name: name, unit: unit, value: value, tags: copyTags(tags)})

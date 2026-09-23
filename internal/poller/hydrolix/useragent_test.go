@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mercereau/hydrolix-metrics-go/internal/build"
+	"github.com/mercereau/hydrolix-metrics-go/internal/sinks"
 )
 
 func TestUserAgentAdminCommentFormat(t *testing.T) {
@@ -41,14 +42,18 @@ func TestAdminCommentBaseOnlyDescribesTheCollector(t *testing.T) {
 	defer func(v string) { build.Version = v }(build.Version)
 
 	build.Version = "v1.1.0-a2316f4"
-	got := newAdminCommentBase(30 * time.Second)
-	want := "User: hydrolix-metrics-go version: v1.1.0-a2316f4 interval: 30s"
+	ms := sinks.MetricSinks{sinks.NewNop(nil), sinks.NewNop(nil)}
+	got := newAdminCommentBase(30*time.Second, ms.Name())
+	want := "User: hydrolix-metrics-go version: v1.1.0-a2316f4 interval: 30s sinks: nop,nop"
 	if got != want {
 		t.Errorf("newAdminCommentBase() = %q, want %q", got, want)
 	}
 
 	build.Version = ""
-	if got := newAdminCommentBase(0); !strings.Contains(got, "version: dev") {
-		t.Errorf("newAdminCommentBase() = %q, want it to report %q", got, "version: dev")
+	got = newAdminCommentBase(0, sinks.MetricSinks{}.Name())
+	for _, token := range []string{"version: dev", "sinks: none"} {
+		if !strings.Contains(got, token) {
+			t.Errorf("newAdminCommentBase() = %q, want it to report %q", got, token)
+		}
 	}
 }
